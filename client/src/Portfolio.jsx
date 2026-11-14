@@ -12,18 +12,6 @@ const STAGES = [
   { n: 'Deploy', t: 'helm upgrade', log: 'Rolled out to production, 0 downtime' },
 ];
 
-/* ---------- one shared animation loop; every scene/band subscribes ---------- */
-const frames = new Set();
-function useFrame(fn) {
-  const ref = useRef(fn);
-  ref.current = fn;
-  useEffect(() => {
-    const f = () => ref.current();
-    frames.add(f);
-    return () => frames.delete(f);
-  }, []);
-}
-
 /* ---------- animated background: a living infrastructure graph ---------- */
 function Cosmos({ world }) {
   const ref = useRef(null);
@@ -88,56 +76,31 @@ function Cosmos({ world }) {
   return <canvas ref={ref} className="cosmos" aria-hidden="true" />;
 }
 
-/* ---------- Scene: a tall section with a pinned stage, driven by scroll progress ---------- */
-function Scene({ id, label, h, bare, hscroll, className = '', onActive, onP, children }) {
+/* ---------- small pieces ---------- */
+function Reveal({ children, className = '', delay = 0, as: Tag = 'div' }) {
   const ref = useRef(null);
-  const last = useRef(-1);
+  const [on, setOn] = useState(false);
   useEffect(() => {
-    const el = ref.current;
-    const redo = () => { last.current = -1; };
-    const measure = () => {
-      if (hscroll) {
-        const t = el.querySelector('.track');
-        const shift = Math.max(0, t.scrollWidth - innerWidth);
-        el.style.setProperty('--shift', shift);
-        el.style.height = `${innerHeight + shift}px`;
-      }
-      redo();
-    };
-    measure();
-    addEventListener('resize', measure);
-    document.fonts?.ready.then(measure);
-    const to = setTimeout(measure, 600);
-    return () => { removeEventListener('resize', measure); clearTimeout(to); };
-  }, [hscroll]);
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setOn(true); io.disconnect(); } }, { threshold: 0.12 });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, []);
+  return <Tag ref={ref} className={`rv ${on ? 'in' : ''} ${className}`} style={{ transitionDelay: `${delay}ms` }}>{children}</Tag>;
+}
 
-  useFrame(() => {
-    const el = ref.current;
-    if (!el || scrollY === last.current) return;
-    last.current = scrollY;
-    const r = el.getBoundingClientRect();
-    const vh = innerHeight;
-    const span = r.height - vh;
-    const p = span > 0 ? clamp(-r.top / span) : clamp(1 - r.top / vh);
-    el.style.setProperty('--p', p.toFixed(4));
-    el.style.setProperty('--e', clamp(1 - r.top / vh).toFixed(4));
-    el.style.setProperty('--x', clamp(1 - r.bottom / vh).toFixed(4));
-    if (r.top < vh * 0.5 && r.bottom > vh * 0.5) onActive?.(id);
-    onP?.(p);
-  });
-
+function Section({ id, label, className = '', children }) {
   return (
-    <section id={id} ref={ref} className={`scene ${bare ? 'bare' : ''} ${className}`} style={h ? { height: `${h}vh` } : undefined}>
-      <div className="stick">
-        <div className="glass" />
-        {label && <div className="chap"><b>{label[0]}</b> — {label[1]}</div>}
-        <div className="inner">{children}</div>
+    <section id={id} className={`sec ${className}`}>
+      <div className="wrap">
+        <div className="panel">
+          {label && <div className="chap"><b>{label[0]}</b> — {label[1]}</div>}
+          {children}
+        </div>
       </div>
     </section>
   );
 }
 
-/* ---------- small pieces ---------- */
 function Typer({ prefix, roles }) {
   const [t, setT] = useState('');
   const key = (roles || []).join('|');
@@ -187,10 +150,46 @@ function Count({ v = '' }) {
   return <span ref={ref}>{m ? m[1] + n + m[3] : v}</span>;
 }
 
-const Words = ({ text }) => {
-  const w = (text || '').split(' ');
-  return w.map((x, i) => <Fragment key={i}><span className="rw" style={{ '--i': i, '--n': w.length }}>{x}</span>{' '}</Fragment>);
-};
+/* CI/CD pipeline: starts by itself when it scrolls into view */
+function Pipeline() {
+  const box = useRef(null);
+  const [started, setStarted] = useState(false);
+  const [step, setStep] = useState(0);
+  const [run, setRun] = useState(0);
+  useEffect(() => {
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setStarted(true); io.disconnect(); } }, { threshold: 0.4 });
+    io.observe(box.current);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!started) return;
+    setStep(0);
+    let i = 0;
+    const id = setInterval(() => { i++; setStep(i); if (i >= STAGES.length) clearInterval(id); }, 1000);
+    return () => clearInterval(id);
+  }, [started, run]);
+  const done = step >= STAGES.length;
+  return (
+    <div className="pipe" ref={box} aria-label="Animated CI/CD pipeline">
+      <div className="pipe-top">
+        <span>main · pipeline #{1240 + run}</span>
+        <button onClick={() => setRun((r) => r + 1)}>{done ? 'Run again' : 'Restart'}</button>
+      </div>
+      <div className="stages">
+        {STAGES.map((s, i) => (
+          <div key={s.n} className={'stage ' + (started && i < step ? 'done' : started && i === step ? 'run' : '')}>
+            <div className="node">{started && i < step ? '✓' : i + 1}</div>
+            <b>{s.n}</b><small>{s.t}</small>
+          </div>
+        ))}
+      </div>
+      <div className="log" aria-live="polite">
+        {started && STAGES.slice(0, Math.min(step + 1, STAGES.length)).map((s, i) => <div key={s.n}>{i < step ? <em>✓</em> : '…'} {s.log}</div>)}
+        {done && <div><em>Shipped.</em> Another green build.</div>}
+      </div>
+    </div>
+  );
+}
 
 const fill = (d) => <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={d} /></svg>;
 const stroke = (c) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{c}</svg>;
@@ -223,22 +222,6 @@ function Socials({ list, labels }) {
   );
 }
 
-function Band({ words }) {
-  const a = useRef(null), b = useRef(null);
-  const text = Array(4).fill(words.join('  ·  ')).join('  ·  ');
-  useFrame(() => {
-    if (!a.current) return;
-    a.current.style.setProperty('--tx', `${-scrollY * 0.3}px`);
-    b.current.style.setProperty('--tx', `${scrollY * 0.3}px`);
-  });
-  return (
-    <div className="band" aria-hidden="true">
-      <div ref={a} className="row r1">{text}</div>
-      <div ref={b} className="row r2">{text}</div>
-    </div>
-  );
-}
-
 function ContactForm() {
   const blank = { name: '', email: '', body: '', website: '' };
   const [f, setF] = useState(blank);
@@ -264,40 +247,12 @@ function ContactForm() {
   );
 }
 
-function DeliveryScene({ num, onActive }) {
-  const [i, setI] = useState(0);
-  const n = STAGES.length;
-  const done = i >= n;
-  return (
-    <Scene id="delivery" h={420} label={[num, 'Delivery']} onActive={onActive} onP={(p) => setI(Math.min(n, Math.floor(p * (n + 0.4))))}>
-      <div className="dl">
-        <h2 className="big">Every push <em>ships.</em></h2>
-        <p className="muted">Scroll to run the pipeline. Build, test, scan and deploy, with zero downtime.</p>
-        <div className="stages">
-          {STAGES.map((s, k) => (
-            <div key={s.n} className="st" style={{ '--i': k, '--n': n }}>
-              <s className="fill" />
-              <div className="node">{k < i ? '✓' : k + 1}</div>
-              <b>{s.n}</b><small>{s.t}</small>
-            </div>
-          ))}
-        </div>
-        <div className="log" aria-live="polite">
-          {STAGES.slice(0, Math.min(i + 1, n)).map((s, k) => <div key={s.n}>{k < i ? <em>✓</em> : '…'} {s.log}</div>)}
-          {done && <div><em>Shipped.</em> Another green build.</div>}
-        </div>
-      </div>
-    </Scene>
-  );
-}
-
 /* ---------- page ---------- */
 export default function Portfolio() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [active, setActive] = useState('top');
   const world = useRef({ idx: 0, colors: PALETTE });
-  const reduce = useRef(matchMedia('(prefers-reduced-motion: reduce)').matches).current;
   useEffect(() => { api.get('/content').then(setData).catch((e) => setErr(e.message)); }, []);
 
   const p = data?.profile;
@@ -310,12 +265,18 @@ export default function Portfolio() {
     world.current.colors = [/^#[0-9a-f]{6}$/i.test(p.accent || '') ? p.accent : PALETTE[0], ...PALETTE.slice(1)];
   }, [p]);
 
+  // which chapter is on screen (drives the dots and the background colour)
   useEffect(() => {
-    if (!data || reduce) return;
-    let id;
-    const loop = () => { frames.forEach((f) => f()); id = requestAnimationFrame(loop); };
-    id = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(id);
+    if (!data) return;
+    const els = [...document.querySelectorAll('main > section[id]')];
+    const io = new IntersectionObserver((es) => es.forEach((e) => {
+      if (e.isIntersecting) {
+        world.current.idx = Math.max(0, els.indexOf(e.target));
+        setActive(e.target.id);
+      }
+    }), { rootMargin: '-45% 0px -50% 0px' });
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
   }, [!!data]);
 
   if (err) return <div className="center"><p>Couldn’t load the portfolio: {err}</p></div>;
@@ -333,10 +294,7 @@ export default function Portfolio() {
   if (on('experience') && jobs.length) chapters.push({ id: 'experience', name: 'Experience' });
   if (on('contact')) chapters.push({ id: 'contact', name: 'Contact' });
   const num = (id) => String(chapters.findIndex((c) => c.id === id)).padStart(2, '0');
-  const onActive = (id) => {
-    world.current.idx = Math.max(0, chapters.findIndex((c) => c.id === id));
-    setActive((a) => (a === id ? a : id));
-  };
+  const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 
   const groups = [];
   skills.forEach((s) => {
@@ -351,10 +309,10 @@ export default function Portfolio() {
     ['youtube', 'YouTube', p.youtube], ['whatsapp', 'WhatsApp', p.whatsapp], ['website', 'Website', p.website], ['resume', 'Résumé', p.resumeUrl],
   ].filter(([, , u]) => u);
   const bandWords = skills.length ? skills.map((s) => s.name) : (p.roles?.length ? p.roles : ['Full-stack', 'DevOps']);
-  const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+  const bandText = bandWords.join('  ·  ') + '  ·  ';
 
   return (
-    <div className={reduce ? 'reduce' : ''}>
+    <div>
       <Cosmos world={world} />
       <header className="top">
         <div className="wrap">
@@ -377,129 +335,139 @@ export default function Portfolio() {
       </nav>
 
       <main>
-        {/* 00 Intro */}
-        <Scene id="top" h={190} bare onActive={onActive}>
-          <div className={`hero-wrap ${p.photo ? 'has-me' : ''}`}>
-          <div className="hero">
-            {p.available && <span className="status"><span className="dot" />{p.status}</span>}
-            <h1 aria-label={p.headline}>
-              {(p.headline || '').split(' ').map((w, i) => (
-                <Fragment key={i}><span className="w" aria-hidden="true"><span style={{ '--i': i }}>{w}</span></span>{' '}</Fragment>
-              ))}
-            </h1>
-            <p className="lead">{p.intro}</p>
-            <Typer prefix={p.rolesPrefix} roles={p.roles} />
-            <div className="cta">
-              {on('work') && <a className="btn p" href="#work" onClick={(e) => { e.preventDefault(); go('work'); }}>See my work</a>}
-              {on('contact') && <a className="btn" href="#contact" onClick={(e) => { e.preventDefault(); go('contact'); }}>Get in touch</a>}
-            </div>
-            <Socials list={socials} />
-          </div>
-          {p.photo && (
-            <figure className="me">
-              <img src={p.photo} alt={`Portrait of ${p.name}`} />
-              <figcaption>{p.name}</figcaption>
-            </figure>
-          )}
-          </div>
-          <div className="cue" aria-hidden="true"><span>Scroll</span><i /></div>
-        </Scene>
-
-        {on('marquee') && <Band words={bandWords} />}
-
-        {/* 01 About: words light up as you scroll, then the skills fly in */}
-        {on('about') && (
-          <Scene id="about" h={330} label={[num('about'), 'About']} onActive={onActive}>
-            <div className="ab">
-              <div>
-                <h2 className="big"><Words text={p.aboutTitle} /></h2>
-                <p className="muted fade">{p.aboutText}</p>
+        {/* Intro */}
+        <section id="top" className="hero-sec">
+          <div className="wrap">
+            <div className={`hero-wrap ${p.photo ? 'has-me' : ''}`}>
+              <div className="hero">
+                {p.available && <span className="status"><span className="dot" />{p.status}</span>}
+                <h1 aria-label={p.headline}>
+                  {(p.headline || '').split(' ').map((w, i) => (
+                    <Fragment key={i}><span className="w" aria-hidden="true"><span style={{ '--i': i }}>{w}</span></span>{' '}</Fragment>
+                  ))}
+                </h1>
+                <p className="lead">{p.intro}</p>
+                <Typer prefix={p.rolesPrefix} roles={p.roles} />
+                <div className="cta">
+                  {on('work') && <a className="btn p" href="#work" onClick={(e) => { e.preventDefault(); go('work'); }}>See my work</a>}
+                  {on('contact') && <a className="btn" href="#contact" onClick={(e) => { e.preventDefault(); go('contact'); }}>Get in touch</a>}
+                </div>
+                <Socials list={socials} />
               </div>
-              <div className="groups">
-                {groups.map((g) => (
-                  <div key={g.name} className="grp">
-                    <h3>{g.name}</h3>
-                    <div className="tags">
-                      {g.items.map((s) => <span className="tag tg" key={s._id} style={{ '--i': k++, '--n': skills.length }}>{s.name}</span>)}
-                    </div>
+              {p.photo && (
+                <figure className="me">
+                  <div className="me-bar">
+                    <i /><i /><i />
+                    <span>{p.logo || p.name}.dev</span>
                   </div>
-                ))}
-              </div>
+                  <div className="me-img">
+                    <img src={p.photo} alt={`Portrait of ${p.name}`} />
+                    <span className="scan" />
+                  </div>
+                  <figcaption>
+                    <span className="dot" />
+                    {p.name}
+                    {p.roles?.[0] && <small>{p.roles[0]}</small>}
+                  </figcaption>
+                </figure>
+              )}
             </div>
-          </Scene>
+          </div>
+        </section>
+
+        {on('marquee') && (
+          <div className="band" aria-hidden="true">
+            <div className="row r1"><span>{bandText}</span><span>{bandText}</span></div>
+            <div className="row r2"><span>{bandText}</span><span>{bandText}</span></div>
+          </div>
         )}
 
-        {/* 02 Work: vertical scroll drives a horizontal gallery */}
-        {on('work') && projects.length > 0 && (
-          <Scene id="work" hscroll label={[num('work'), 'Work']} onActive={onActive}>
-            <div className="track">
-              <div className="pc intro">
-                <h2 className="big">{p.workTitle}</h2>
-                <p className="muted">{p.workText}</p>
-                <span className="hint">Keep scrolling →</span>
-              </div>
-              {projects.map((x, i) => (
-                <article className="pc" key={x._id} style={{ '--c': PALETTE[i % PALETTE.length] }}>
-                  <span className="no">{String(i + 1).padStart(2, '0')}</span>
-                  <h3>{x.title}</h3>
-                  <p>{x.description}</p>
-                  <div className="tags">{(x.stack || []).map((s) => <span className="tag" key={s}>{s}</span>)}</div>
-                  {x.metric && <div className="metric"><Count v={x.metric} /><small>{x.metricLabel}</small></div>}
-                  {(x.link || x.repo) && (
-                    <div className="plinks">
-                      {x.link && <a href={x.link} target="_blank" rel="noopener noreferrer">Live site ↗</a>}
-                      {x.repo && <a href={x.repo} target="_blank" rel="noopener noreferrer">Source ↗</a>}
-                    </div>
-                  )}
-                </article>
+        {/* About */}
+        {on('about') && (
+          <Section id="about" label={[num('about'), 'About']}>
+            <Reveal><h2 className="big">{p.aboutTitle}</h2></Reveal>
+            <Reveal delay={80}><p className="sub">{p.aboutText}</p></Reveal>
+            <div className="cols">
+              {groups.map((g, i) => (
+                <Reveal key={g.name} delay={i * 100}>
+                  <h3>{g.name}</h3>
+                  <div className="tags">
+                    {g.items.map((s) => <span className="tag tg" key={s._id} style={{ '--i': k++ }}>{s.name}</span>)}
+                  </div>
+                </Reveal>
               ))}
             </div>
-            <div className="hbar" aria-hidden="true"><i /></div>
-          </Scene>
+          </Section>
         )}
 
-        {/* 03 Delivery: scrub the CI/CD pipeline with your scroll */}
-        {on('pipeline') && <DeliveryScene num={num('delivery')} onActive={onActive} />}
-
-        {/* 04 Experience: roles swap in as you scroll */}
-        {on('experience') && jobs.length > 0 && (
-          <Scene id="experience" h={jobs.length * 100 + 100} label={[num('experience'), 'Experience']} onActive={onActive}>
-            <div className="xp" style={{ '--m': Math.max(jobs.length - 1, 0) }}>
-              <div>
-                <h2 className="big">{p.expTitle}</h2>
-                <p className="muted">{p.expText}</p>
-                <ul className="xd">
-                  {jobs.map((j, i) => <li key={j._id} style={{ '--i': i }}>{j.period}</li>)}
-                </ul>
-              </div>
-              <div className="xstack">
-                {jobs.map((j, i) => (
-                  <article className="xj" key={j._id} style={{ '--i': i }}>
-                    <time>{j.period}</time>
-                    <h3>{j.role}</h3>
-                    {j.org && <div className="org">{j.org}</div>}
-                    <p>{j.description}</p>
+        {/* Work */}
+        {on('work') && projects.length > 0 && (
+          <Section id="work" label={[num('work'), 'Work']}>
+            <Reveal><h2 className="big">{p.workTitle}</h2></Reveal>
+            <Reveal delay={80}><p className="sub">{p.workText}</p></Reveal>
+            <div className="pgrid">
+              {projects.map((x, i) => (
+                <Reveal key={x._id} delay={(i % 3) * 90}>
+                  <article className="pc" style={{ '--c': PALETTE[i % PALETTE.length] }}>
+                    <span className="no">{String(i + 1).padStart(2, '0')}</span>
+                    <h3>{x.title}</h3>
+                    <p>{x.description}</p>
+                    <div className="tags">{(x.stack || []).map((s) => <span className="tag" key={s}>{s}</span>)}</div>
+                    {x.metric && <div className="metric"><Count v={x.metric} /><small>{x.metricLabel}</small></div>}
+                    {(x.link || x.repo) && (
+                      <div className="plinks">
+                        {x.link && <a href={x.link} target="_blank" rel="noopener noreferrer">Live site ↗</a>}
+                        {x.repo && <a href={x.repo} target="_blank" rel="noopener noreferrer">Source ↗</a>}
+                      </div>
+                    )}
                   </article>
-                ))}
-              </div>
+                </Reveal>
+              ))}
             </div>
-          </Scene>
+          </Section>
         )}
 
-        {/* 05 Contact */}
+        {/* Delivery */}
+        {on('pipeline') && (
+          <Section id="delivery" label={[num('delivery'), 'Delivery']}>
+            <Reveal><h2 className="big">Every push <em>ships.</em></h2></Reveal>
+            <Reveal delay={80}><p className="sub">Build, test, scan and deploy, automated end to end with zero downtime.</p></Reveal>
+            <Reveal delay={140}><Pipeline /></Reveal>
+          </Section>
+        )}
+
+        {/* Experience */}
+        {on('experience') && jobs.length > 0 && (
+          <Section id="experience" label={[num('experience'), 'Experience']}>
+            <Reveal><h2 className="big">{p.expTitle}</h2></Reveal>
+            <Reveal delay={80}><p className="sub">{p.expText}</p></Reveal>
+            <div className="tl">
+              {jobs.map((j, i) => (
+                <Reveal key={j._id} className="job" delay={(i % 3) * 90}>
+                  <time>{j.period}</time>
+                  <h3>{j.role}{j.org ? `, ${j.org}` : ''}</h3>
+                  <p>{j.description}</p>
+                </Reveal>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Contact */}
         {on('contact') && (
-          <Scene id="contact" label={[num('contact'), 'Contact']} onActive={onActive} className="end">
-            <div className="ct">
-              <h2 className="big">{p.contactTitle}</h2>
-              <p className="muted">{p.contactText}</p>
+          <Section id="contact" label={[num('contact'), 'Contact']}>
+            <Reveal><h2 className="big">{p.contactTitle}</h2></Reveal>
+            <Reveal delay={80}><p className="sub">{p.contactText}</p></Reveal>
+            <Reveal delay={140}>
               {p.email && <a className="mail" href={`mailto:${p.email}`}>{p.email}</a>}
               <ContactForm />
-              <Socials list={socials.filter(([k]) => k !== 'email')} labels />
-              <footer className="bottom">{p.footer || `© ${new Date().getFullYear()} ${p.name}. Built with the MERN stack.`}</footer>
-            </div>
-          </Scene>
+              <Socials list={socials.filter(([key]) => key !== 'email')} labels />
+            </Reveal>
+          </Section>
         )}
       </main>
+
+      <footer className="bottom"><div className="wrap">{p.footer || `© ${new Date().getFullYear()} ${p.name}. Built with the MERN stack.`}</div></footer>
     </div>
   );
 }
