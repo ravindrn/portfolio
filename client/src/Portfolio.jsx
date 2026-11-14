@@ -358,7 +358,7 @@ export default function Portfolio() {
                 <figure className="me">
                   <div className="me-bar">
                     <i /><i /><i />
-                    <span>{p.logo || p.name}.dev</span>
+                    <span>{p.logo || p.name}.me</span>
                   </div>
                   <div className="me-img">
                     <img src={p.photo} alt={`Portrait of ${p.name}`} />
