@@ -396,22 +396,11 @@ export default function Portfolio() {
             <Socials list={socials} />
           </div>
           {p.photo && (
-  <figure className="me">
-    <div className="me-bar">
-      <i /><i /><i />
-      <span>{(p.logo || p.name)}.dev</span>
-    </div>
-    <div className="me-img">
-      <img src={p.photo} alt={`Portrait of ${p.name}`} />
-      <span className="scan" />
-    </div>
-    <figcaption>
-      <span className="dot" />
-      {p.name}
-      {p.roles?.[0] && <small>{p.roles[0]}</small>}
-    </figcaption>
-  </figure>
-)}
+            <figure className="me">
+              <img src={p.photo} alt={`Portrait of ${p.name}`} />
+              <figcaption>{p.name}</figcaption>
+            </figure>
+          )}
           </div>
           <div className="cue" aria-hidden="true"><span>Scroll</span><i /></div>
         </Scene>
