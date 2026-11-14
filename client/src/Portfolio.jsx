@@ -317,7 +317,7 @@ export default function Portfolio() {
       <header className="top">
         <div className="wrap">
           <nav className="main">
-            <a className="logo" href="#top" onClick={(e) => { e.preventDefault(); go('top'); }}>{p.logo || p.name}<span>.</span>dev</a>
+            <a className="logo" href="#top" onClick={(e) => { e.preventDefault(); go('top'); }}>{p.logo || p.name}<span>.</span>me</a>
             <div className="links">
               {chapters.slice(1).map((c) => <a key={c.id} href={`#${c.id}`} onClick={(e) => { e.preventDefault(); go(c.id); }}>{c.name}</a>)}
               <button className="toggle" onClick={toggle} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
