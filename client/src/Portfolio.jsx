@@ -3,6 +3,21 @@ import { api } from './api.js';
 import { applyAccent, useTheme } from './theme.js';
 
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+// Makes links work even if they were typed without https:// (otherwise the browser treats them as
+// relative links and opens your own portfolio). A bare username also works, e.g. "johndoe".
+const HANDLE = {
+  github: (h) => `https://github.com/${h}`, linkedin: (h) => `https://linkedin.com/in/${h}`,
+  twitter: (h) => `https://x.com/${h}`, instagram: (h) => `https://instagram.com/${h}`,
+  facebook: (h) => `https://facebook.com/${h}`, youtube: (h) => `https://youtube.com/@${h}`,
+  whatsapp: (h) => `https://wa.me/${h.replace(/\D/g, '')}`,
+};
+const fixUrl = (u = '', key) => {
+  const s = String(u).trim();
+  if (!s) return '';
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(s)) return s;
+  if (HANDLE[key] && /^@?[\w-]+$/.test(s)) return HANDLE[key](s.replace(/^@/, ''));
+  return 'https://' + s.replace(/^\/+/, '');
+};
 const PALETTE = ['#7C8CFF', '#22D3EE', '#A78BFA', '#34D399', '#FBBF24', '#F472B6'];
 const STAGES = [
   { n: 'Commit', t: 'git push', log: 'Pushed feat/checkout-v2 → origin' },
@@ -307,7 +322,7 @@ export default function Portfolio() {
     ['email', 'Email', p.email && `mailto:${p.email}`], ['github', 'GitHub', p.github], ['linkedin', 'LinkedIn', p.linkedin],
     ['twitter', 'X', p.twitter], ['instagram', 'Instagram', p.instagram], ['facebook', 'Facebook', p.facebook],
     ['youtube', 'YouTube', p.youtube], ['whatsapp', 'WhatsApp', p.whatsapp], ['website', 'Website', p.website], ['resume', 'Résumé', p.resumeUrl],
-  ].filter(([, , u]) => u);
+  ].map(([k, n, u]) => [k, n, fixUrl(u, k)]).filter(([, , u]) => u);
   const bandWords = skills.length ? skills.map((s) => s.name) : (p.roles?.length ? p.roles : ['Full-stack', 'DevOps']);
   const bandText = bandWords.join('  ·  ') + '  ·  ';
 
@@ -317,7 +332,7 @@ export default function Portfolio() {
       <header className="top">
         <div className="wrap">
           <nav className="main">
-            <a className="logo" href="#top" onClick={(e) => { e.preventDefault(); go('top'); }}>{p.logo || p.name}<span>.</span>me</a>
+            <a className="logo" href="#top" onClick={(e) => { e.preventDefault(); go('top'); }}>{p.logo || p.name}<span>.</span>dev</a>
             <div className="links">
               {chapters.slice(1).map((c) => <a key={c.id} href={`#${c.id}`} onClick={(e) => { e.preventDefault(); go(c.id); }}>{c.name}</a>)}
               <button className="toggle" onClick={toggle} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
@@ -358,7 +373,7 @@ export default function Portfolio() {
                 <figure className="me">
                   <div className="me-bar">
                     <i /><i /><i />
-                    <span>{p.logo || p.name}.me</span>
+                    <span>{p.logo || p.name}.dev</span>
                   </div>
                   <div className="me-img">
                     <img src={p.photo} alt={`Portrait of ${p.name}`} />
@@ -413,11 +428,15 @@ export default function Portfolio() {
                     <h3>{x.title}</h3>
                     <p>{x.description}</p>
                     <div className="tags">{(x.stack || []).map((s) => <span className="tag" key={s}>{s}</span>)}</div>
-                    {x.metric && <div className="metric"><Count v={x.metric} /><small>{x.metricLabel}</small></div>}
-                    {(x.link || x.repo) && (
-                      <div className="plinks">
-                        {x.link && <a href={x.link} target="_blank" rel="noopener noreferrer">Live site ↗</a>}
-                        {x.repo && <a href={x.repo} target="_blank" rel="noopener noreferrer">Source ↗</a>}
+                    {(x.metric || x.link || x.repo) && (
+                      <div className="pfoot">
+                        {x.metric && <div className="metric"><Count v={x.metric} /><small>{x.metricLabel}</small></div>}
+                        {(x.link || x.repo) && (
+                          <div className="plinks">
+                            {x.link && <a href={fixUrl(x.link)} target="_blank" rel="noopener noreferrer">Live site ↗</a>}
+                            {x.repo && <a href={fixUrl(x.repo)} target="_blank" rel="noopener noreferrer">Source ↗</a>}
+                          </div>
+                        )}
                       </div>
                     )}
                   </article>
